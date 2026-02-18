@@ -1,0 +1,15 @@
+# Binarios compilados
+taller1_cpp
+taller1_fortran
+
+# Archivos LaTeX auxiliares
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+
+# Archivos de sistema macOS
+.DS_Store

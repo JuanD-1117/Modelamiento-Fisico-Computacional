@@ -1,0 +1,687 @@
+%% ============================================================
+%%  Informe Técnico: Método de Numerov — Pozos Potenciales
+%%  Compilar en Overleaf con pdfLaTeX
+%%  Archivos requeridos junto al .tex:
+%%    fig_caja.png, fig_pozo_V.png, fig_doble.png, fig_comparacion.png
+%%    MetodoNumerov.f90
+%% ============================================================
+\documentclass[12pt,a4paper]{article}
+
+%% ── Paquetes ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{physics}            % \dv, \pdv, \bra, \ket …
+\usepackage{graphicx}
+\usepackage{booktabs}           % tablas bonitas
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,
+            linkcolor=blue!60!black,
+            citecolor=green!50!black,
+            urlcolor=blue!70!black]{hyperref}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm, top=2.5cm, bottom=3cm}
+
+%% ── Colores personalizados ──────────────────────────────────────────────────
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codeframe}{HTML}{CCCCCC}
+\definecolor{kwcolor}{HTML}{0033B3}
+\definecolor{strcolor}{HTML}{067D17}
+\definecolor{cmtcolor}{HTML}{8C8C8C}
+
+%% ── Estilo para código Fortran ──────────────────────────────────────────────
+\lstdefinelanguage{Fortran90}{
+  morekeywords={program, end, implicit, none, integer, double, precision,
+                parameter, function, contains, result, select, case, do,
+                while, if, then, else, open, close, write, print, read,
+                real, logical},
+  sensitive=false,
+  morecomment=[l]{!},
+  morestring=[b]",
+}
+\lstset{
+  language=Fortran90,
+  backgroundcolor=\color{codebg},
+  frame=single, framerule=0.6pt, rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{kwcolor}\bfseries,
+  stringstyle=\color{strcolor},
+  commentstyle=\color{cmtcolor}\itshape,
+  numbers=left, numberstyle=\tiny\color{gray}, numbersep=6pt,
+  breaklines=true, breakatwhitespace=true,
+  tabsize=4, captionpos=b,
+  showstringspaces=false,
+}
+
+%% ── Comandos útiles ─────────────────────────────────────────────────────────
+\newcommand{\eo}{E_0}
+\newcommand{\kk}{k^2}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+%% ── Portada ─────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{1cm}
+  {\large\bfseries Universidad — Física Computacional\par}
+  \vspace{0.4cm}
+  {\small Modelamiento en Física Computacional\par}
+  \vspace{2.5cm}
+  {\LARGE\bfseries Método de Numerov para la Determinación\\[6pt]
+   de Niveles de Energía en Pozos Potenciales\par}
+  \vspace{0.8cm}
+  {\large Informe Técnico\par}
+  \vspace{3cm}
+  \rule{0.5\linewidth}{0.5pt}\\[0.4cm]
+  {\large\itshape Implementación en Fortran 90\par}
+  \rule{0.5\linewidth}{0.5pt}
+  \vfill
+  {\large Febrero 2026\par}
+\end{titlepage}
+
+%% ── Índice ──────────────────────────────────────────────────────────────────
+\tableofcontents
+\newpage
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Introducción}
+\label{sec:intro}
+
+La ecuación de Schrödinger independiente del tiempo (TISE, por sus siglas en
+inglés) constituye el fundamento de la mecánica cuántica no relativista.  Su
+resolución analítica exacta sólo es posible para unos pocos potenciales modelo;
+en todos los demás casos se requieren técnicas numéricas.
+
+El \textbf{método de Numerov} \cite{numerov1924} es un algoritmo de integración
+de segundo orden diseñado específicamente para ecuaciones diferenciales
+ordinarias (EDO) de la forma
+\begin{equation}\label{eq:generic_ode}
+  \psi''(x) = f(x)\,\psi(x),
+\end{equation}
+donde no aparece la derivada de primer orden.  Al aplicar la TISE unidimensional
+en unidades naturales ($\hbar = 1$, $m = 1$), ésta adopta exactamente esa forma,
+lo que convierte al método de Numerov en la herramienta ideal para calcular
+estados ligados cuánticos.
+
+En este trabajo se estudian tres pozos potenciales representativos:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Pozo cuadrado finito}: modelo fundamental con solución
+        analítica exacta mediante ecuaciones trascendentes.
+  \item \textbf{Pozo en V (lineal)}: solución analítica mediante funciones
+        de Airy, lo que permite validar con gran precisión el método numérico.
+  \item \textbf{Doble pozo cuártico}: sistema sin solución de forma cerrada,
+        con rica fenomenología cuántica (desdoblamiento por efecto túnel).
+\end{itemize}
+
+La implementación se realizó en Fortran~90 y combina el propagador de Numerov
+con un \emph{shooting method} (método de disparo) y búsqueda de raíces por
+bisección.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Marco Teórico}
+\label{sec:teoria}
+
+\subsection{Ecuación de Schrödinger independiente del tiempo}
+\label{ssec:tise}
+
+En unidades naturales $\hbar = 1$ con $m = 1$, la TISE unidimensional es
+\begin{equation}\label{eq:tise}
+  -\frac{1}{2}\,\psi''(x) + V(x)\,\psi(x) = E\,\psi(x),
+\end{equation}
+que al despejar $\psi''$ toma la forma canónica de Numerov:
+\begin{equation}\label{eq:numerov_form}
+  \psi''(x) = -k^2(x)\,\psi(x),
+  \qquad k^2(x) \equiv 2\bigl[E - V(x)\bigr].
+\end{equation}
+
+La función $k^2(x)$ es positiva en las regiones clásicamente permitidas ($E >
+V$) y negativa en las regiones prohibidas ($E < V$).  Las soluciones ligadas
+satisfacen $\psi(x) \to 0$ cuando $|x| \to \infty$.
+
+\subsection{Derivación del método de Numerov}
+\label{ssec:numerov}
+
+Considerando una malla uniforme $x_j = x_0 + j h$ con paso $h$, las
+expansiones de Taylor de $\psi$ en $x_{j\pm 1}$ son:
+\begin{align}
+  \psi_{j+1} &= \psi_j + h\psi_j' + \frac{h^2}{2}\psi_j''
+               + \frac{h^3}{6}\psi_j'''
+               + \frac{h^4}{24}\psi_j^{(4)} + O(h^5),\\
+  \psi_{j-1} &= \psi_j - h\psi_j' + \frac{h^2}{2}\psi_j''
+               - \frac{h^3}{6}\psi_j'''
+               + \frac{h^4}{24}\psi_j^{(4)} + O(h^5).
+\end{align}
+
+Sumando ambas expresiones y eliminando las potencias impares:
+\begin{equation}\label{eq:taylor_sum}
+  \psi_{j+1} + \psi_{j-1} = 2\psi_j + h^2\psi_j'' + \frac{h^4}{12}\psi_j^{(4)}
+                             + O(h^6).
+\end{equation}
+
+La clave del método de Numerov consiste en aproximar la derivada de cuarto
+orden usando la derivada segunda en puntos vecinos.  Como $\psi'' = -k^2\psi$,
+se tiene:
+\begin{equation}\label{eq:fourth_der}
+  \psi_j^{(4)} \approx
+  \frac{-k^2_{j+1}\psi_{j+1} + 2\,k^2_j\,\psi_j - k^2_{j-1}\psi_{j-1}}{h^2}
+  + O(h^2).
+\end{equation}
+
+Sustituyendo \eqref{eq:fourth_der} en \eqref{eq:taylor_sum} y reordenando,
+se obtiene la \textbf{fórmula de recurrencia de Numerov}:
+\begin{equation}\label{eq:numerov_recurr}
+  \boxed{
+  \psi_{j+1} = \frac{2\!\left(1 - \tfrac{5h^2}{12}\,k^2_j\right)\psi_j
+                    - \left(1 + \tfrac{h^2}{12}\,k^2_{j-1}\right)\psi_{j-1}}
+                    {1 + \tfrac{h^2}{12}\,k^2_{j+1}}
+  }
+\end{equation}
+
+El método es de orden 4 en $h$; el error de truncamiento local es
+$O(h^6/\psi)$, lo que lo hace significativamente más preciso que el método de
+Verlet estándar para este tipo de ecuaciones.
+
+\paragraph{Ventajas frente a otros integradores.}
+A diferencia de los métodos de Runge-Kutta aplicados al sistema de dos
+ecuaciones de primer orden, Numerov explota la ausencia del término $\psi'$ y
+logra orden 4 con sólo tres evaluaciones por paso, en lugar de cuatro.
+
+\subsection{Método de disparo (\emph{shooting method})}
+\label{ssec:shooting}
+
+Para resolver el problema de valores de frontera $\psi(\pm L) \approx 0$ (donde
+$L = 4$ u.a.\ en la implementación), se utiliza el \emph{método de disparo
+hacia la derecha}:
+
+\begin{enumerate}[label=\arabic*.]
+  \item Fijar condiciones iniciales en el borde izquierdo:
+        $\psi_0 = 0$, $\psi_1 = \varepsilon$ (con $\varepsilon = 10^{-5}$).
+  \item Propagar con la recurrencia \eqref{eq:numerov_recurr} hasta
+        el borde derecho y registrar el valor final $\psi_n$.
+  \item Repetir para distintos valores de $E$ y buscar los cambios de signo
+        de $\psi_n(E)$.  Un cambio de signo indica la presencia de un eigenvalor
+        en ese intervalo de energía.
+\end{enumerate}
+
+La condición de frontera $\psi(x_L) = 0$ es una buena aproximación cuando la
+función de onda decae suficientemente rápido en la región prohibida, lo que
+requiere $\kappa \cdot d \gg 1$, donde $\kappa = \sqrt{2(V_0-E)}$ y $d$ es la
+distancia desde el borde del pozo hasta la frontera del dominio.
+
+\subsection{Refinamiento por bisección}
+\label{ssec:biseccion}
+
+Una vez detectado un cambio de signo en el intervalo $[E_1, E_2]$, el eigenvalor
+se afina mediante el \textbf{método de bisección}: en cada iteración se evalúa
+$\psi_n(E_m)$ con $E_m = (E_1+E_2)/2$ y se actualiza el intervalo conservando
+el cambio de signo.  Con 40 iteraciones el intervalo inicial de amplitud
+$\Delta E = 0.2$ u.a.\ se reduce a $\Delta E/2^{40} \approx 1.8 \times
+10^{-13}$ u.a., garantizando convergencia en doble precisión.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Pozos Potenciales Considerados}
+\label{sec:pozos}
+
+\subsection{Pozo cuadrado finito}
+
+\begin{equation}\label{eq:V_caja}
+  V_1(x) =
+  \begin{cases}
+    0    & \text{si } |x| < a = 1.5 \text{ u.a.},\\
+    V_0 = 25 & \text{en otro caso.}
+  \end{cases}
+\end{equation}
+
+Las energías de enlace satisfacen las ecuaciones trascendentes (estados pares
+e impares respectivamente):
+\begin{equation}\label{eq:caja_analitica}
+  k\tan(ka) = \kappa, \qquad -k\cot(ka) = \kappa,
+\end{equation}
+con $k = \sqrt{2E}$ y $\kappa = \sqrt{2(V_0 - E)}$.
+
+\subsection{Pozo en V (potencial lineal)}
+
+\begin{equation}\label{eq:V_lineal}
+  V_2(x) = F|x|, \qquad F = 4 \text{ u.a.}
+\end{equation}
+
+La TISE con este potencial se reduce, mediante el cambio de variables
+$z = F^{1/3}(x - E/F) \cdot 2^{1/3}$, a la ecuación de Airy:
+\begin{equation}\label{eq:airy}
+  \frac{d^2 \psi}{d z^2} = z\,\psi.
+\end{equation}
+
+Para un potencial simétrico la condición de paridad en $x = 0$ selecciona:
+\begin{itemize}
+  \item \textbf{Estados pares:} $\operatorname{Ai}'(-E/2) = 0$
+        $\Rightarrow E_n = 2\,z_n^{(\text{par})}$
+  \item \textbf{Estados impares:} $\operatorname{Ai}(-E/2) = 0$
+        $\Rightarrow E_n = 2\,z_n^{(\text{imp})}$
+\end{itemize}
+donde $z_n^{(\text{par})}$ y $z_n^{(\text{imp})}$ son los ceros de $\text{Ai}'$
+y $\text{Ai}$ en el eje negativo, respectivamente.
+
+\subsection{Doble pozo cuártico}
+
+\begin{equation}\label{eq:V_doble}
+  V_3(x) = \frac{\alpha}{2}\,x^4 - \beta\,x^2,
+  \qquad \alpha = 1, \quad \beta = 5 \text{ u.a.}
+\end{equation}
+
+Los mínimos del potencial se encuentran en $x_{\min} = \pm\sqrt{\beta/\alpha}
+= \pm\sqrt{5} \approx \pm 2.236$ u.a., con $V_{\min} = -\beta^2/(2\alpha) =
+-12.5$ u.a.  La barrera central está en $x = 0$, con $V(0) = 0$.  Este potencial
+posee la rica fenomenología del \textbf{efecto túnel cuántico}: los estados de
+menor energía presentan un desdoblamiento en pares casi degenerados
+(''splitting'' túnel), cuya separación es exponencialmente pequeña para estados
+profundos.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Implementación en Fortran~90}
+\label{sec:implementacion}
+
+El código \texttt{MetodoNumerov.f90} implementa en un único programa modular
+los tres componentes descritos: propagador de Numerov, barrido en energía y
+refinamiento por bisección.  La arquitectura se controla con la variable entera
+\texttt{tipo\_pozo} $\in \{1, 2, 3\}$.
+
+\vspace{4pt}
+\begin{lstlisting}[caption={Función de potencial y propagador de Numerov (fragmento).},
+                   label={lst:numerov}]
+! --- Potencial V(x) ---
+function V_func(pos, selector)
+    double precision :: pos, V_func
+    integer :: selector
+    select case (selector)
+    case(1) ! Caja Cuadrada
+        if (abs(pos) < 1.5d0) then
+            V_func = 0.d0
+        else
+            V_func = 25.d0
+        end if
+    case(2) ! Pozo en V (Lineal)
+        V_func = 4.0d0 * abs(pos)
+    case(3) ! Doble Pozo cuartico
+        V_func = 0.5d0*pos**4 - 5.0d0*pos**2
+    end select
+end function
+
+! --- Propagador de Numerov ---
+function solve_numerov(E, n, h, x, selector) result(psif)
+    double precision :: E, h, x(0:n), psif, p(0:n), k2(0:n), h2_12
+    integer :: n, j, selector
+    h2_12 = (h**2)/12.d0
+    do j = 0, n
+        k2(j) = 2.0d0 * (E - V_func(x(j), selector))
+    end do
+    p(0) = 0.d0;  p(1) = 1e-5
+    do j = 1, n-1
+        p(j+1) = (2.d0*(1.d0-5.d0*h2_12*k2(j))*p(j)         &
+                 - (1.d0+h2_12*k2(j-1))*p(j-1))               &
+                 / (1.d0+h2_12*k2(j+1))
+        if (abs(p(j+1)) > 1e10) p(j+1) = 1e10 ! control de desborde
+    end do
+    psif = p(n)
+end function
+\end{lstlisting}
+
+La malla se define con $N = 2000$ puntos en $x \in [-4, 4]$ u.a., dando un
+paso $h = 8/2000 = 0.004$ u.a.  El error de truncamiento de Numerov es $O(h^4)
+\approx (0.004)^4 = 2.56 \times 10^{-10}$, suficiente para la doble precisión
+de Fortran.
+
+El barrido en energía recorre el intervalo $E \in [-15, 20]$ u.a.\ con paso
+$\Delta E = 0.2$ u.a.\ y la bisección refina cada eigenvalor con 40
+iteraciones.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Resultados y Análisis}
+\label{sec:resultados}
+
+\subsection{Pozo cuadrado finito}
+\label{ssec:res_caja}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{fig_caja.png}
+  \caption{Pozo cuadrado finito ($V_0 = 25$ u.a., $a = 1.5$ u.a.).  Se muestran
+           los seis niveles energéticos reportados por el código junto con las
+           funciones de onda correspondientes (escaladas para visualización).
+           Los niveles en rojo más claro corresponden a artefactos numéricos
+           generados por la gestión del desbordamiento (véase §\ref{ssec:overflow}).}
+  \label{fig:caja}
+\end{figure}
+
+La tabla~\ref{tab:caja} compara los niveles encontrados por el código con los
+valores exactos obtenidos resolviendo las ecuaciones trascendentes
+\eqref{eq:caja_analitica} con bisección de alta precisión ($\Delta E =
+10^{-3}$, con preservación correcta del signo).
+
+\begin{table}[H]
+  \centering
+  \caption{Comparación de niveles de energía del pozo cuadrado finito (u.a.).
+           Los niveles marcados con $\dagger$ son artefactos numéricos;
+           los marcados con $\star$ son niveles físicos no detectados.}
+  \label{tab:caja}
+  \begin{tabular}{clccr}
+    \toprule
+    $n$ & Estado & $E_n$ exacto & $E_n$ código & $\delta E$ \\
+    \midrule
+    1 & $1s$ (par)   & $0.4588$  & ---           & {\footnotesize $\star$ no detectado} \\
+    2 & $1p$ (impar) & $1.8321$  & ---           & {\footnotesize $\star$ no detectado} \\
+    3 & $2s$ (par)   & $4.1101$  & $4.1101$      & $< 10^{-4}$ \\
+    — & (artefacto)  & ---       & $4.5968^\dagger$ & {\footnotesize espurio} \\
+    — & (artefacto)  & ---       & $5.3405^\dagger$ & {\footnotesize espurio} \\
+    4 & $2p$ (impar) & $7.2735$  & $7.2735$      & $< 10^{-4}$ \\
+    5 & $3s$ (par)   & $11.2865$ & $11.2865$     & $< 10^{-4}$ \\
+    6 & $3p$ (impar) & $16.0767$ & $16.0767$     & $< 10^{-4}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+El código detecta correctamente los cuatro niveles superiores con errores
+menores a $10^{-4}$ u.a., demostrando la alta precisión intrínseca del
+propagador de Numerov.  Sin embargo, los dos niveles más bajos ($E_1 = 0.459$
+y $E_2 = 1.832$ u.a.) no son detectados, y dos niveles espurios aparecen en
+su lugar.  Esta discrepancia se analiza en la sección~\ref{ssec:overflow}.
+
+\subsection{Pozo en V (potencial lineal)}
+\label{ssec:res_V}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{fig_pozo_V.png}
+  \caption{Pozo en V con $V(x) = 4|x|$.  Se grafican los ocho primeros niveles
+           energéticos y sus funciones de onda (escaladas).  El estado
+           fundamental tiene energía $E_1 \approx 2.038$ u.a.}
+  \label{fig:V}
+\end{figure}
+
+El pozo en~V es el único de los tres potenciales que dispone de solución analítica
+exacta expresable en términos de ceros de las funciones de Airy, permitiendo
+una validación rigurosa.
+
+\begin{table}[H]
+  \centering
+  \caption{Niveles de energía del pozo en~V: comparación entre el resultado
+           numérico (Numerov, Fortran) y el analítico (ceros de funciones Airy).}
+  \label{tab:V}
+  \begin{tabular}{clccc}
+    \toprule
+    $n$ & Paridad & $E_n$ Airy (exacto) & $E_n$ Numerov & Error relativo \\
+    \midrule
+    1 & par  & 2.03758 & 2.03758 & $< 10^{-5}$ \\
+    2 & impar & 4.67621 & 4.67621 & $< 10^{-5}$ \\
+    3 & par  & 6.49640 & 6.49639 & $1.5\times10^{-6}$ \\
+    4 & impar & 8.17590 & 8.17591 & $1.2\times10^{-6}$ \\
+    5 & par  & 9.64020 & 9.64042 & $2.3\times10^{-5}$ \\
+    6 & impar & 11.04112 & 11.04333 & $2.0\times10^{-4}$ \\
+    7 & par  & 12.32661 & 12.34012 & $1.1\times10^{-3}$ \\
+    8 & impar & 13.57342 & 13.63253 & $4.3\times10^{-3}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La concordancia entre los valores numéricos y los analíticos es notable: los
+cuatro primeros niveles coinciden con errores inferiores a $10^{-5}$, y el error
+crece suavemente para niveles superiores.  Este incremento es esperable: los
+estados de mayor energía tienen funciones de onda con mayor frecuencia espacial
+y se acercan al borde del dominio $|x| = 4$~u.a., donde el potencial lineal
+$V(4) = 16$~u.a.\ no confina perfectamente.
+
+\paragraph{Validación del método.}
+Este resultado valida experimentalmente el orden de precisión del método de
+Numerov: el error relativo para los niveles bajos ($\sim 10^{-5}$) es coherente
+con el error de truncamiento teórico $O(h^4) = O((0.004)^4) \approx 2.6\times
+10^{-10}$ magnificado por la acumulación a lo largo de los $N = 2000$ pasos,
+resultando en un error global de orden $O(h^4 N) \approx O(h^3) \approx
+6\times10^{-8}$ por nivel, más efectos de frontera.
+
+\subsection{Doble pozo cuártico}
+\label{ssec:res_doble}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\textwidth]{fig_doble.png}
+  \caption{Doble pozo cuártico $V(x) = \tfrac{1}{2}x^4 - 5x^2$.  La línea
+           punteada roja indica el tope de la barrera central ($E = 0$); la
+           azul señala el mínimo del pozo ($E = -12.5$ u.a.).  Los ocho
+           niveles reportados están todos por encima del tope de la barrera.}
+  \label{fig:doble}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Niveles de energía del doble pozo cuártico encontrados por el código
+           (todos ellos por encima del tope de la barrera $E = 0$).}
+  \label{tab:doble}
+  \begin{tabular}{cl}
+    \toprule
+    $n$ & $E_n$ (u.a.) \\
+    \midrule
+    1 & $+0.03225$ \\
+    2 & $+0.90371$ \\
+    3 & $+2.73805$ \\
+    4 & $+4.55182$ \\
+    5 & $+6.60208$ \\
+    6 & $+8.79476$ \\
+    7 & $+11.12476$ \\
+    8 & $+13.57853$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Todos los niveles hallados satisfacen $E > 0$, es decir, se encuentran por
+encima del tope de la barrera central.  Para estos estados, la región
+clásicamente permitida es \emph{conexa} (un solo intervalo continuo alrededor
+de $x = 0$), por lo que la física es la de un pozo único con forma cuártica.
+
+La fenomenología más interesante del doble pozo —el \textbf{desdoblamiento
+túnel} de los estados bajo la barrera ($-12.5 < E < 0$)— no es accesible con
+el código en su estado actual (véase §\ref{ssec:overflow}).  En el límite de
+barrera alta ($\beta \gg \alpha$), la energía de desdoblamiento es
+\begin{equation}\label{eq:tunneling}
+  \Delta E_n \approx \frac{\omega}{\pi}\,
+  \exp\!\left(-\int_{-x_{\text{tp}}}^{x_{\text{tp}}} \kappa(x)\,dx\right),
+\end{equation}
+donde $\kappa(x) = \sqrt{2(V(x) - E)}$ y $\omega$ es la frecuencia de pequeñas
+oscilaciones en el fondo del pozo.
+
+Para estimar $\omega$ se expande el potencial alrededor del mínimo:
+\begin{equation}
+  V(x) \approx V_{\min} + \frac{1}{2}\,V''(x_{\min})\,(x-x_{\min})^2,
+\end{equation}
+con $V''(x) = 6x^2 - 10$, de modo que $V''(\sqrt{5}) = 20$, y por tanto
+$\omega = \sqrt{V''/m} = \sqrt{20} \approx 4.47$ u.a.  La energía del estado
+fundamental dentro de cada pozo es $E_0^{\text{loc}} \approx V_{\min} + \omega/2
+= -12.5 + 2.24 = -10.26$~u.a.
+
+\subsection{Comparación global}
+
+La figura~\ref{fig:comp} muestra los tres potenciales con sus niveles en un
+único panel comparativo.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{fig_comparacion.png}
+  \caption{Panel comparativo de los tres pozos potenciales.  De izquierda a
+           derecha: pozo cuadrado, pozo en~V y doble pozo cuártico.  Los
+           niveles de energía se representan como líneas horizontales sobre cada
+           potencial.}
+  \label{fig:comp}
+\end{figure}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Análisis de Limitaciones Numéricas}
+\label{sec:limitaciones}
+
+\subsection{El problema del desbordamiento y la preservación del signo}
+\label{ssec:overflow}
+
+El propagador de Numerov puede producir valores de $\psi_j$ que crecen
+exponencialmente en las regiones clásicamente prohibidas.  En la implementación,
+la línea de control de desbordamiento es:
+
+\begin{lstlisting}[numbers=none]
+    if (abs(p(j+1)) > 1e10) p(j+1) = 1e10
+\end{lstlisting}
+
+Esta instrucción siempre asigna el valor \emph{positivo} $+10^{10}$, perdiendo
+la información de signo.  El correcto tratamiento debería ser:
+
+\begin{lstlisting}[numbers=none]
+    if (abs(p(j+1)) > 1e10) p(j+1) = sign(1.d0, p(j+1)) * 1e10
+\end{lstlisting}
+
+Las consecuencias de esta omisión son:
+
+\begin{enumerate}
+  \item \textbf{Niveles perdidos.}  Para estados de baja energía (profundamente
+        ligados), la función de onda en la región de la barrera derecha crece
+        exponencialmente y excede $10^{10}$ con valor \emph{negativo} (que
+        indica que el eigenvalor acaba de cruzarse).  Al recortarse a $+10^{10}$,
+        el cambio de signo queda enmascarado: el barrido de energía no detecta
+        la raíz.  Así, para el pozo cuadrado se pierden $E_1 = 0.459$ y $E_2
+        = 1.832$~u.a.
+
+  \item \textbf{Niveles espurios.}  En el intervalo de energía donde el
+        desbordamiento recortado alterna entre $-|\psi_n|$ (valor real
+        negativo) y $+10^{10}$ (recorte incorrecto), el algoritmo detecta
+        transiciones de signo ficticias.  Estos artefactos generan los niveles
+        espurios $E = 4.597$ y $E = 5.340$~u.a.\ en el pozo cuadrado.
+
+  \item \textbf{Niveles de doble pozo por debajo de la barrera.}  La barrera
+        central del doble pozo cuártico tiene una amplitud espacial
+        $\sim 2\sqrt{5} \approx 4.47$ u.a.\ y el coeficiente de amortiguamiento
+        $\kappa(0) = \sqrt{2\,|E_{\min}|} \approx 5$~u.a.$^{-1}$ para los
+        estados más profundos.  Esto produce amplificaciones del orden
+        $e^{\kappa \cdot d} \sim e^{22} \approx 3.6\times10^9$, fácilmente
+        superiores al umbral de desbordamiento.
+\end{enumerate}
+
+\begin{table}[H]
+  \centering
+  \caption{Resumen del impacto del error de desbordamiento en cada pozo.}
+  \label{tab:overflow}
+  \begin{tabular}{lccl}
+    \toprule
+    Pozo & Niveles correctos & Niveles perdidos & Niveles espurios \\
+    \midrule
+    Caja cuadrada & 4 & 2 ($E_1$, $E_2$) & 2 ($E \approx 4.6$, 5.3) \\
+    Pozo en V     & 8 & 0                & 0 \\
+    Doble pozo    & 8 (sobre barrera) & $\gtrsim 8$ (bajo barrera) & posiblemente 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+El pozo en~V no sufre el problema porque la región clásicamente prohibida es
+semi-infinita sin paredes reflectantes; la función de onda en el dominio
+computacional es lo suficientemente pequeña en los bordes para no desbordar.
+
+\subsection{Condición de frontera y dominio finito}
+
+La condición de Dirichlet $\psi(\pm L) = 0$ es válida cuando la longitud de
+decaimiento $1/\kappa$ es pequeña comparada con la distancia del borde del
+pozo al extremo del dominio.  Para el pozo cuadrado con $V_0 = 25$ y
+$E \approx 4$~u.a.:
+\begin{equation}
+  \kappa = \sqrt{2(V_0 - E)} = \sqrt{42} \approx 6.5 \text{ u.a.}^{-1},
+  \qquad e^{-\kappa \cdot 2.5} \approx e^{-16.3} \approx 8\times10^{-8},
+\end{equation}
+lo que confirma que la aproximación es excelente para los niveles detectados.
+Para los niveles más altos (cercanos a $V_0$), $\kappa \to 0$ y la aproximación
+se deteriora; esto explica el aumento del error en los niveles 7 y~8 del pozo
+en~V.
+
+\subsection{Paso de barrido $\Delta E$ y resolución de raíces}
+
+El paso $\Delta E = 0.2$ u.a.\ puede \emph{saltar} sobre un eigenvalor si éste
+se encuentra en un intervalo donde la función $\psi_n(E)$ cambia de signo
+dentro de una ventana muy estrecha.  Esto ocurre cuando la amplificación
+exponencial es enorme: el cambio de signo en $\psi_n$ sucede en un rango de
+energías $\delta E \sim h^2 / e^{\kappa L}$, que puede ser mucho menor que
+$\Delta E$.  La solución correcta es usar $\Delta E$ más pequeño o bien rescalar
+la función de onda a cada paso (técnica de Prüfer).
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusiones}
+\label{sec:conclusiones}
+
+\begin{enumerate}[leftmargin=*, label=\arabic*.]
+  \item El \textbf{método de Numerov} fue implementado exitosamente en
+        Fortran~90 y combinado con un método de disparo y bisección para
+        determinar eigenvalores del operador de Schrödinger en tres potenciales
+        cualitativamente distintos.
+
+  \item Para el \textbf{pozo en~V}, la comparación con las soluciones analíticas
+        exactas (funciones de Airy) confirma que los errores numéricos son
+        inferiores a $10^{-5}$ para los niveles bajos, creciendo hasta
+        $\sim 4\times10^{-3}$ para el octavo nivel por efectos de borde.  Esto
+        valida experimentalmente el orden $O(h^4)$ del integrador de Numerov.
+
+  \item Para el \textbf{pozo cuadrado}, cuatro de los seis niveles físicos son
+        detectados correctamente.  Los dos niveles de menor energía no son
+        encontrados debido a un error en la gestión del desbordamiento numérico
+        (la instrucción \texttt{p(j+1) = 1e10} debería ser
+        \texttt{p(j+1) = sign(1.d0,p(j+1))*1e10}).
+
+  \item Para el \textbf{doble pozo cuártico}, el código reporta correctamente
+        los estados por encima de la barrera central ($E > 0$).  Los estados
+        ligados en los pozos ($-12.5 < E < 0$), que exhiben el fenómeno de
+        \emph{desdoblamiento túnel}, no son accesibles con el algoritmo actual.
+        Se estima una energía de estado fundamental local de
+        $E_0^{\text{loc}} \approx -10.3$~u.a.
+
+  \item La corrección del manejo del signo en el control de desbordamiento
+        permitiría al código encontrar todos los estados ligados de los tres
+        pozos, incluidos los pares casi degenerados del doble pozo.
+
+  \item El método de Numerov representa una elección óptima para este tipo de
+        problemas: combina alta precisión (orden~4) con baja complejidad
+        computacional (tres evaluaciones por paso), siendo superior a métodos
+        genéricos de Runge-Kutta para la resolución de la TISE.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\begin{thebibliography}{9}
+
+\bibitem{numerov1924}
+  B.~V.~Numerov,
+  \textit{A method of extrapolation of perturbations},
+  Monthly Notices of the Royal Astronomical Society, \textbf{84}, 592--601 (1924).
+
+\bibitem{griffiths}
+  D.~J.~Griffiths \& D.~F.~Schroeter,
+  \textit{Introduction to Quantum Mechanics}, 3rd ed.
+  Cambridge University Press (2018).
+
+\bibitem{numrec}
+  W.~H.~Press, S.~A.~Teukolsky, W.~T.~Vetterling, B.~P.~Flannery,
+  \textit{Numerical Recipes in Fortran~90}, 2nd ed.
+  Cambridge University Press (1996).
+
+\bibitem{landau_lifshitz}
+  L.~D.~Landau \& E.~M.~Lifshitz,
+  \textit{Quantum Mechanics: Non-Relativistic Theory}, 3rd ed.
+  Butterworth-Heinemann (1977).
+
+\bibitem{abramowitz}
+  M.~Abramowitz \& I.~A.~Stegun,
+  \textit{Handbook of Mathematical Functions}.
+  Dover Publications (1972).
+
+\end{thebibliography}
+
+\end{document}

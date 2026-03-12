@@ -1,0 +1,38 @@
+============================================================
+  Jacobi FDM — Poisson/Laplace  (malla 100x100, tol=1e-6)
+  Python serial (numpy)
+============================================================
+
+----- Ejercicio 1: Poisson  f=(x²+y²)·e^(xy)  [0,2]x[0,1] -----
+  Convergió en 14672 iteraciones
+  Error máximo  : 1.4257e-01
+  Error promedio: 4.6766e-02
+  >> Tiempo: 1.417964 s
+
+----- Ejercicio 2: Laplace  f=0                [1,2]x[0,1] -----
+  Convergió en 13368 iteraciones
+  Error máximo  : 2.0255e-03
+  Error promedio: 8.0464e-04
+  >> Tiempo: 1.291845 s
+
+----- Ejercicio 3: Poisson  f=4                [1,2]x[0,2] -----
+  Convergió en 13220 iteraciones
+  Error máximo  : 5.1037e-01
+  Error promedio: 2.5130e-01
+  >> Tiempo: 1.282399 s
+
+----- Ejercicio 4: Poisson  f=x/y+y/x         [1,2]x[1,2] -----
+  Convergió en 14816 iteraciones
+  Error máximo  : 2.0232e-03
+  Error promedio: 8.0358e-04
+  >> Tiempo: 1.430643 s
+
+============================================================
+  RESUMEN DE TIEMPOS (perf_counter)
+============================================================
+  Ejercicio 1: 1.417964 s
+  Ejercicio 2: 1.291845 s
+  Ejercicio 3: 1.282399 s
+  Ejercicio 4: 1.430643 s
+  Total      : 5.422851 s
+============================================================

@@ -1,0 +1,42 @@
+ ============================================================
+  Jacobi FDM — Poisson/Laplace  (malla 100x100, tol=1e-6)
+   Fortran serial
+ ============================================================
+
+ ----- Ejercicio 1: Poisson  f=(x²+y²)e^(xy)  [0,2]x[0,1] -----
+  Convergió en  14672 iteraciones.
+  Resultado: Ejercicio 1 — Poisson
+  Error máximo    :   1.4257E-01
+  Error promedio  :   4.6766E-02
+  >> Tiempo:     0.248513 s
+
+ ----- Ejercicio 2: Laplace  f=0               [1,2]x[0,1] -----
+  Convergió en  13368 iteraciones.
+  Resultado: Ejercicio 2 — Laplace
+  Error máximo    :   2.0255E-03
+  Error promedio  :   8.0464E-04
+  >> Tiempo:     0.184931 s
+
+ ----- Ejercicio 3: Poisson  f=4               [1,2]x[0,2] -----
+  Convergió en  13220 iteraciones.
+  Resultado: Ejercicio 3 — Poisson f=4
+  Error máximo    :   5.1037E-01
+  Error promedio  :   2.5130E-01
+  >> Tiempo:     0.219930 s
+
+ ----- Ejercicio 4: Poisson  f=x/y+y/x        [1,2]x[1,2] -----
+  Convergió en  14816 iteraciones.
+  Resultado: Ejercicio 4 — Poisson f=x/y+y/x
+  Error máximo    :   2.0232E-03
+  Error promedio  :   8.0358E-04
+  >> Tiempo:     0.245137 s
+
+ ============================================================
+   RESUMEN DE TIEMPOS (CPU time)
+ ============================================================
+  Ejercicio 1:     0.248513 s
+  Ejercicio 2:     0.184931 s
+  Ejercicio 3:     0.219930 s
+  Ejercicio 4:     0.245137 s
+  Total      :     0.898511 s
+ ============================================================
